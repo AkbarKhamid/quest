@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quest-platform-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+    - host: quest-platform.minikube
+      http:
+        paths:
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 80
+          - path: /quests
+            pathType: Prefix
+            backend:
+              service:
+                name: quest-catalog-service
+                port:
+                  number: 80
+          - path: /progress
+            pathType: Prefix
+            backend:
+              service:
+                name: quest-processing-service
+                port:
+                  number: 80

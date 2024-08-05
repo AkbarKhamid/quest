@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  labels:
+    app: auth
+spec:
+  type: NodePort
+  ports:
+    - targetPort: 80
+      port: 80
+  selector:
+    app: auth
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-configuration
+  labels:
+    app: auth
+data:
+  ACCESS_TOKEN_EXPIRE_MINUTES: "10"
+  PROJECT_NAME: "auth Microservice"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: auth-credentials
+type: Opaque
+data:
+  email: john@test.com
+  password: Pass1234
+  secret_key: secret_key
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-deployment
+  labels:
+    app: auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      initContainers:
+        - name: wait-database
+          image: postgres:12
+          command:
+            [
+              "sh",
+              "-c",
+              "until pg_isready -h ${POSTGRES_HOST};  do echo waiting for database; sleep 2; done;",
+            ]
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+        - name: perform-migrations
+          image: auth
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          envFrom:
+            - configMapRef:
+                name: postgres-configuration
+      containers:
+        - name: auth
+          image: auth
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            httpGet:
+              path: /api/health/
+              port: 80
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: FIRST_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: email
+            - name: FIRST_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: password
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: secret_key
+          envFrom:
+            - configMapRef:
+                name: postgres-configuration
+            - configMapRef:
+                name: auth-configuration
